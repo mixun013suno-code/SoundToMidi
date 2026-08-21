@@ -1,52 +1,108 @@
-name: Build Windows EXE
+name: Build Windows EXE (Optimized)
 
-# Запуск при пуше в main или вручную
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # Позволяет запускать вручную
+    tags:
+      - 'v*'  # Запуск при создании тега
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest  # Используем Windows
+    runs-on: windows-latest
     
     steps:
-    # Получаем код из репозитория
+    # Получение кода
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
-    # Устанавливаем Python
+    # Настройка Python
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.9'
+        python-version: '3.11'
+        cache: 'pip'  # Кэширование pip
     
-    # Устанавливаем зависимости
+    # Кэширование зависимостей
+    - name: Cache pip packages
+      uses: actions/cache@v4
+      with:
+        path: ~\AppData\Local\pip\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    # Установка зависимостей
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
     
-    # Компилируем в EXE
-    - name: Build EXE with PyInstaller
+    # Сборка EXE
+    - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --name "MusicTranscriber" --icon=icon.ico music_transcriber_app.py
+        pyinstaller --onefile --windowed --clean --name "MusicTranscriber" music_transcriber_app.py
     
-    # Загружаем результат как артефакт
+    # Проверка файла
+    - name: Verify EXE exists
+      run: |
+        if (Test-Path "dist\MusicTranscriber.exe") {
+          Write-Host "EXE file created successfully"
+          Get-Item "dist\MusicTranscriber.exe" | Select-Object Name, Length
+        } else {
+          Write-Error "EXE file not found!"
+          exit 1
+        }
+    
+    # Загрузка артефакта (v4)
     - name: Upload EXE artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: MusicTranscriber-Windows
+        name: MusicTranscriber-Windows-${{ github.sha }}
         path: |
           dist/MusicTranscriber.exe
           README.md
+        if-no-files-found: error
+        retention-days: 30  # Хранить 30 дней
     
-    # Создаем Release (опционально)
+    # Создание Release при теге
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        files: dist/MusicTranscriber.exe
+        files: |
+          dist/MusicTranscriber.exe
+          README.md
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Дополнительная сборка для Linux (опционально)
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build Linux executable
+      run: |
+        pyinstaller --onefile --name "MusicTranscriber" music_transcriber_app.py
+    
+    - name: Upload Linux artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MusicTranscriber-Linux-${{ github.sha }}
+        path: dist/MusicTranscriber
+        if-no-files-found: error
