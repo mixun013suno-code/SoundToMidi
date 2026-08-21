@@ -1,0 +1,52 @@
+name: Build Windows EXE
+
+# Запуск при пуше в main или вручную
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Позволяет запускать вручную
+
+jobs:
+  build:
+    runs-on: windows-latest  # Используем Windows
+    
+    steps:
+    # Получаем код из репозитория
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    # Устанавливаем Python
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    # Устанавливаем зависимости
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    # Компилируем в EXE
+    - name: Build EXE with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name "MusicTranscriber" --icon=icon.ico music_transcriber_app.py
+    
+    # Загружаем результат как артефакт
+    - name: Upload EXE artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: MusicTranscriber-Windows
+        path: |
+          dist/MusicTranscriber.exe
+          README.md
+    
+    # Создаем Release (опционально)
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/MusicTranscriber.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
